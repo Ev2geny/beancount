@@ -97,12 +97,17 @@ class EntryPrinter:
       prefix: User-specific prefix for custom indentation (for Fava).
       stringify_invalid_types: If a metadata value is invalid, force a conversion to
         string for printout.
+      write_source: If true a source file and line number will be written for each 
+        entry in a format interpretable as a message location for Emacs, VSCode or
+        other editors. This information will be commented out by a semicolon. Which 
+        will prevent it from being interpreted as as a metadata, if the output is 
+        parsed again. Useful for debugging especially in multi-file setups.
     """
 
     # pylint: disable=invalid-name
 
     def __init__(self, dcontext=None, render_weight=False, min_width_account=None,
-                 prefix=None, stringify_invalid_types=False):
+                 prefix=None, stringify_invalid_types=False, write_source=False):
         self.dcontext = dcontext or display_context.DEFAULT_DISPLAY_CONTEXT
         self.dformat = self.dcontext.build(precision=display_context.Precision.MOST_COMMON)
         self.dformat_max = self.dcontext.build(precision=display_context.Precision.MAXIMUM)
@@ -110,6 +115,7 @@ class EntryPrinter:
         self.min_width_account = min_width_account
         self.prefix = prefix or '  '
         self.stringify_invalid_types = stringify_invalid_types
+        self.write_source = write_source
 
     def __call__(self, obj):
         """Render a directive.
@@ -163,6 +169,25 @@ class EntryPrinter:
                 if value_str is not None:
                     oss.write("{}{}: {}\n".format(prefix, key, value_str))
 
+    def write_entry_source(self, meta, oss, prefix=None):
+        """Write source file and line number in a format interpretable as a message 
+        location for Emacs, VSCode or other editors. This information will be 
+        commented out by a semicolon. Which will prevent it from being interpreted 
+        as as a metadata, if the output is parsed again. Useful for debugging 
+        especially in multi-file setups.
+
+        Args:
+          meta: A dict that contains the metadata for this directive.
+          oss: A file object to write to.
+        """
+        if not self.write_source:
+            return
+        
+        if prefix is None:
+            prefix = self.prefix
+            
+        oss.write('{}; source: {}\n'.format(prefix, render_source(meta)))
+
     def Transaction(self, entry, oss):
         # Compute the string for the payee and narration line.
         strings = []
@@ -182,6 +207,7 @@ class EntryPrinter:
                 strings.append('^{}'.format(link))
 
         oss.write('{e.date} {e.flag} {}\n'.format(' '.join(strings), e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
         rows = [self.render_posting_strings(posting)
@@ -210,6 +236,8 @@ class EntryPrinter:
                 oss.write(fmt(account,
                               position_str,
                               weight_str or ''))
+                
+                
                 if posting.meta:
                     self.write_metadata(posting.meta, oss, '    ')
         else:
@@ -288,10 +316,12 @@ class EntryPrinter:
                                          tolerance=tolerance,
                                          currency=entry.amount.currency,
                                          comment=comment))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Note(self, entry, oss):
         oss.write('{e.date} note {e.account} "{e.comment}"\n'.format(e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Document(self, entry, oss):
@@ -303,6 +333,7 @@ class EntryPrinter:
             for link in sorted(entry.links):
                 oss.write('^{}'.format(link))
         oss.write('\n')
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Pad(self, entry, oss):
@@ -317,27 +348,33 @@ class EntryPrinter:
                      if entry.booking is not None
                      else '')).rstrip())
         oss.write('\n')
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Close(self, entry, oss):
         oss.write('{e.date} close {e.account}\n'.format(e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Commodity(self, entry, oss):
         oss.write('{e.date} commodity {e.currency}\n'.format(e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Price(self, entry, oss):
         oss.write('{e.date} price {e.currency:<22} {amount:>22}\n'.format(
             e=entry, amount=entry.amount.to_string(self.dformat_max)))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Event(self, entry, oss):
         oss.write('{e.date} event "{e.type}" "{e.description}"\n'.format(e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Query(self, entry, oss):
         oss.write('{e.date} query "{e.name}" "{e.query_string}"\n'.format(e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Custom(self, entry, oss):
@@ -358,23 +395,31 @@ class EntryPrinter:
             custom_values.append(value)
         oss.write('{e.date} custom "{e.type}" {}\n'.format(" ".join(custom_values),
                                                            e=entry))
+        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
 
-def format_entry(entry, dcontext=None, render_weights=False, prefix=None):
+def format_entry(entry, dcontext=None, render_weights=False, prefix=None, write_source=False):
     """Format an entry into a string in the same input syntax the parser accepts.
 
     Args:
       entry: An entry instance.
       dcontext: An instance of DisplayContext used to format the numbers.
       render_weights: A boolean, true to render the weights for debugging.
+      write_source: If true a source file and line number will be written for each 
+        entry in a format interpretable as a message location for Emacs, VSCode or
+        other editors. This information will be commented out by a semicolon. Which 
+        will prevent it from being interpreted as as a metadata, if the output is 
+        parsed again. Useful for debugging especially in multi-file setups.
     Returns:
       A string, the formatted entry.
     """
-    return EntryPrinter(dcontext, render_weights, prefix=prefix)(entry)
+    return EntryPrinter(dcontext, render_weights, prefix=prefix, 
+                        write_source=write_source)(entry)
 
 
-def print_entry(entry, dcontext=None, render_weights=False, file=None):
+def print_entry(entry, dcontext=None, render_weights=False, file=None, 
+                write_source=False):
     """A convenience function that prints a single entry to a file.
 
     Args:
@@ -382,6 +427,11 @@ def print_entry(entry, dcontext=None, render_weights=False, file=None):
       dcontext: An instance of DisplayContext used to format the numbers.
       render_weights: A boolean, true to render the weights for debugging.
       file: An optional file object to write the entries to.
+      write_source: If true a source file and line number will be written for each 
+        entry in a format interpretable as a message location for Emacs, VSCode or
+        other editors. This information will be commented out by a semicolon. Which 
+        will prevent it from being interpreted as as a metadata, if the output is 
+        parsed again. Useful for debugging especially in multi-file setups.
     """
     output = file or (codecs.getwriter("utf-8")(sys.stdout.buffer)
                       if hasattr(sys.stdout, 'buffer') else
@@ -393,7 +443,8 @@ def print_entry(entry, dcontext=None, render_weights=False, file=None):
 # TODO(blais): Change this to a function which accepts the same optional
 # arguments as the printer object. Isolate the spacer/segmentation algorithm to
 # its own function.
-def print_entries(entries, dcontext=None, render_weights=False, file=None, prefix=None):
+def print_entries(entries, dcontext=None, render_weights=False, file=None, prefix=None, 
+                  write_source=False):
     """A convenience function that prints a list of entries to a file.
 
     Args:
@@ -401,6 +452,12 @@ def print_entries(entries, dcontext=None, render_weights=False, file=None, prefi
       dcontext: An instance of DisplayContext used to format the numbers.
       render_weights: A boolean, true to render the weights for debugging.
       file: An optional file object to write the entries to.
+      prefix: User-specific prefix for custom indentation (for Fava).
+      write_source: If true a source file and line number will be written for each 
+        entry in a format interpretable as a message location for Emacs, VSCode or
+        other editors. This information will be commented out by a semicolon. Which 
+        will prevent it from being interpreted as as a metadata, if the output is 
+        parsed again. Useful for debugging especially in multi-file setups.
     """
     assert isinstance(entries, list), "Entries is not a list: {}".format(entries)
     output = file or (codecs.getwriter("utf-8")(sys.stdout.buffer)
@@ -410,7 +467,7 @@ def print_entries(entries, dcontext=None, render_weights=False, file=None, prefi
     if prefix:
         output.write(prefix)
     previous_type = type(entries[0]) if entries else None
-    eprinter = EntryPrinter(dcontext, render_weights)
+    eprinter = EntryPrinter(dcontext, render_weights, write_source=write_source)
     for entry in entries:
         # Insert a newline between transactions and between blocks of directives
         # of the same type.
