@@ -126,6 +126,10 @@ class EntryPrinter:
           A string, the rendered directive.
         """
         oss = io.StringIO()
+
+        # We write optional entry source for every entry type, hence writing it here
+        self.write_entry_source(obj.meta, oss, prefix="")
+        
         method = getattr(self, obj.__class__.__name__)
         method(obj, oss)
         return oss.getvalue()
@@ -186,7 +190,7 @@ class EntryPrinter:
         if prefix is None:
             prefix = self.prefix
             
-        oss.write('{}; source: {}\n'.format(prefix, render_source(meta)))
+        oss.write('\n{}; source: {}\n'.format(prefix, render_source(meta)))
 
     def Transaction(self, entry, oss):
         # Compute the string for the payee and narration line.
@@ -207,7 +211,6 @@ class EntryPrinter:
                 strings.append('^{}'.format(link))
 
         oss.write('{e.date} {e.flag} {}\n'.format(' '.join(strings), e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
         rows = [self.render_posting_strings(posting)
@@ -236,8 +239,6 @@ class EntryPrinter:
                 oss.write(fmt(account,
                               position_str,
                               weight_str or ''))
-                
-                
                 if posting.meta:
                     self.write_metadata(posting.meta, oss, '    ')
         else:
@@ -316,12 +317,10 @@ class EntryPrinter:
                                          tolerance=tolerance,
                                          currency=entry.amount.currency,
                                          comment=comment))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Note(self, entry, oss):
         oss.write('{e.date} note {e.account} "{e.comment}"\n'.format(e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Document(self, entry, oss):
@@ -333,7 +332,6 @@ class EntryPrinter:
             for link in sorted(entry.links):
                 oss.write('^{}'.format(link))
         oss.write('\n')
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Pad(self, entry, oss):
@@ -348,33 +346,27 @@ class EntryPrinter:
                      if entry.booking is not None
                      else '')).rstrip())
         oss.write('\n')
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Close(self, entry, oss):
         oss.write('{e.date} close {e.account}\n'.format(e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Commodity(self, entry, oss):
         oss.write('{e.date} commodity {e.currency}\n'.format(e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Price(self, entry, oss):
         oss.write('{e.date} price {e.currency:<22} {amount:>22}\n'.format(
             e=entry, amount=entry.amount.to_string(self.dformat_max)))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Event(self, entry, oss):
         oss.write('{e.date} event "{e.type}" "{e.description}"\n'.format(e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Query(self, entry, oss):
         oss.write('{e.date} query "{e.name}" "{e.query_string}"\n'.format(e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
     def Custom(self, entry, oss):
@@ -395,7 +387,6 @@ class EntryPrinter:
             custom_values.append(value)
         oss.write('{e.date} custom "{e.type}" {}\n'.format(" ".join(custom_values),
                                                            e=entry))
-        self.write_entry_source(entry.meta, oss)
         self.write_metadata(entry.meta, oss)
 
 
